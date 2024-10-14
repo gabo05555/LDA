@@ -90,6 +90,65 @@ class TopicModelingApp(QMainWindow):
             return text
         return ""
 
+    def highlight_keywords(self, text, keywords, specific_keyword=None):
+        """Highlight keywords in green and a specific keyword in yellow."""
+        if not isinstance(text, str):
+            text = ""  # Ensure text is a string
+
+        # Highlight general science-related keywords in green
+        for keyword in keywords:
+            text = re.sub(f"\\b({keyword})\\b", r'<span style="background-color: #90EE90;">\1</span>', text, flags=re.IGNORECASE)
+
+        # Highlight specific "science and technology" in yellow
+        if specific_keyword:
+            text = re.sub(f"\\b({specific_keyword})\\b", r'<span style="background-color: #FFFF00;">\1</span>', text, flags=re.IGNORECASE)
+    
+        return text
+
+    def categorize_article(self, abstract):
+        """Categorize article topics based on keywords."""
+         # Define keywords for different categories
+        categories = {
+        'Health and Medicine': ['health', 'medicine', 'disease', 'therapy', 'medical', 'hospital', 'diabetes', 'cancer'],
+        'Economics and Finance': ['economy', 'finance', 'business', 'market', 'trade', 'investment', 'stock'],
+        'Education and Social Science': ['education', 'teaching', 'learning', 'psychology', 'sociology', 'community'],
+        'Environmental Science': ['environment', 'climate', 'ecology', 'sustainability', 'pollution', 'biodiversity'],
+        'Computer Science and Engineering': [
+            'algorithm', 'data', 'network', 'computing', 'software', 'hardware', 'machine learning', 'AI',
+            'artificial intelligence', 'robotics', 'optimization', 'programming', 'information', 'database',
+            'web', 'internet', 'mobile', 'cybersecurity', 'signal processing', 'pattern recognition', 'image processing',
+            'virtual reality', 'augmented reality'
+        ],
+        'Physics and Mathematics': [
+            'physics', 'mathematics', 'statistic', 'theorem', 'equation', 'geometry', 'calculus', 'linear algebra',
+            'probability', 'quantum', 'relativity', 'statistical', 'numerical'
+        ]
+    }
+
+        # Science and Technology keywords are explicitly handled here
+        science_keywords = ['science', 'technology', 'engineering', 'research', 'development', 'innovation']
+    
+        abstract_lower = abstract.lower() if isinstance(abstract, str) else ""
+
+        # Check for keywords in each category
+        for category, keywords in categories.items():
+            if any(keyword in abstract_lower for keyword in keywords):
+                return category
+
+        return 'Uncategorized'  # Default if no specific category is matched
+
+
+        # Prioritize Science and Technology keywords
+        if any(keyword in abstract_lower for keyword in science_keywords):
+            return 'Science and Technology'
+
+        # Check for other categories
+        for category, keywords in categories.items():
+            if any(keyword in abstract_lower for keyword in keywords):
+                return category
+
+        return None  # Return None if no specific category is matched
+
     def analyze_topics(self):
         if self.data is not None:
             # Preprocess abstracts
@@ -122,19 +181,30 @@ class TopicModelingApp(QMainWindow):
 
             # Check for science and technology relevance
             science_keywords = ['science', 'technology', 'engineering', 'research', 'development', 'innovation']
+            specific_keyword = 'science and technology'
+            
             self.data['is_science_tech'] = self.data['processed_abstract'].apply(
                 lambda x: any(keyword in x for keyword in science_keywords)
             )
 
-            # Prepare output for titles and science/tech relevance
-            titles_output = "Titles and Science/Tech Relevance:\n\n"
-            for index, row in self.data.iterrows():
-                titles_output += f"Title: {row['title']}\n"
-                relevance = "Related to Science and Technology" if row['is_science_tech'] else "Not Related"
-                titles_output += f" - {relevance}\n\n"
+            # Categorize articles by topics
+            self.data['category'] = self.data['abstract'].apply(self.categorize_article)
 
-            self.text_area.setPlainText(titles_output)
+            # Prepare output for titles, science/tech relevance, and category with highlighted keywords
+            titles_output = "<b>Titles and Science/Tech Relevance:</b><br><br>"
+            for index, row in self.data.iterrows():
+                # Highlight science keywords and specific "science and technology"
+                highlighted_abstract = self.highlight_keywords(row['abstract'], science_keywords, specific_keyword)
+                titles_output += f"<b>Title:</b> {row['title']}<br>"
+                relevance = "Related to Science and Technology" if row['is_science_tech'] else "Not Related"
+                category = row['category'] if row['category'] else "Uncategorized"
+                titles_output += f" - {relevance} ({category})<br>"
+                titles_output += f"<b>Abstract:</b> {highlighted_abstract}<br><br>"
+
+            # Set output with HTML formatting
+            self.text_area.setHtml(titles_output)
             self.result_label.setText(f"Total Papers Analyzed: {len(self.data)}")
+
 
 if __name__ == '__main__':
     app = QApplication([])
