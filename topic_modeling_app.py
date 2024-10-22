@@ -148,57 +148,77 @@ class TopicModelingApp(QMainWindow):
 
     def analyze_topics(self):
         if self.data is not None:
-            # Preprocess abstracts
+        # Preprocess abstracts
             self.data['processed_abstract'] = self.data['abstract'].apply(self.preprocess_text)
 
-            # If 'body' column exists, preprocess it as well
-            if 'body' in self.data.columns:
-                self.data['processed_body'] = self.data['body'].apply(self.preprocess_text)
-                texts = self.data['processed_abstract'].tolist() + self.data['processed_body'].tolist()
+        # If 'body' column exists, preprocess it as well
+        if 'body' in self.data.columns:
+            self.data['processed_body'] = self.data['body'].apply(self.preprocess_text)
+            texts = self.data['processed_abstract'].tolist() + self.data['processed_body'].tolist()
+        else:
+            texts = self.data['processed_abstract'].tolist()  # Only use abstracts
+
+        # Tokenize texts
+        texts = [text.split() for text in texts]
+
+        # Create a dictionary and corpus for LDA
+        dictionary = corpora.Dictionary(texts)
+        corpus = [dictionary.doc2bow(text) for text in texts]
+
+        # Apply LDA
+        num_topics = 20
+        lda_model = LdaModel(corpus, num_topics=num_topics, id2word=dictionary, passes=10)
+
+        # Display topics
+        topics = lda_model.print_topics(num_words=3)
+        topics_output = ""
+        for topic in topics:
+            topics_output += f"Topic {topic[0]}: {topic[1]}\n"
+        self.text_area.setPlainText(topics_output)
+
+        # Check for science and technology relevance
+        science_keywords = ['science', 'technology', 'engineering', 'research', 'development', 'innovation','science',
+         'technology', 'engineering', 'research', 'development', 'innovation', 'algorithm', 'data', 'network',
+'computing', 'software', 'hardware', 'machine learning', 'AI', 'artificial intelligence', 'robotics', 'optimization',
+'programming', 'information', 'database', 'web', 'internet', 'mobile', 'cybersecurity', 'signal processing', 'pattern recognition',
+'image processing', 'virtual reality', 'augmented reality', 'environment', 'climate', 'ecology', 'sustainability', 'pollution', 'biodiversity',
+'quantum computing', '5G', 'nanotechnology', 'biotechnology', 'autonomous systems', 'renewable energy', 'cloud computing', 'big data',
+'internet of things', 'bioinformatics', 'genomics', 'neural networks', 'deep learning', 'natural language processing', 'blockchain', 
+'cryptography', 'space exploration', 'satellite technology', 'aerospace engineering', 'semiconductors', 'quantum mechanics', 'astrophysics',
+'telecommunications', 'smart cities', 'green technology', 'human-computer interaction', 'biomechanics', 'thermodynamics', 'fluid dynamics',
+'materials science', '3D printing', 'genetic engineering', 'agricultural technology', 'energy storage', 'smart grid', 'bioengineering',
+'mechatronics', 'computer vision', 'robotic process automation', 'drones', 'wearable technology', 'optics', 'photonics', 'sensor technology',
+'artificial neural networks', 'computational biology', 'environmental monitoring', 'nanomaterials', 'biophysics', 'virtual assistants',
+'automated systems', 'data visualization', 'smart manufacturing', 'quantum information', 'edge computing', 'cyber-physical systems', 
+'smart transportation', 'augmented analytics', 'biofuels', 'carbon capture', 'human augmentation', 'precision medicine', 'telemedicine',
+'electromagnetic fields', 'superconductors', 'renewable resources', 'fusion energy', 'wearable sensors', 'remote sensing', 'geospatial technology']
+
+        self.data['is_science_tech'] = self.data['processed_abstract'].apply(
+            lambda x: any(keyword in x for keyword in science_keywords)
+        )
+
+        # Categorize articles by topics
+        self.data['category'] = self.data['abstract'].apply(self.categorize_article)
+
+        # Prepare output for titles, science/tech relevance, and category
+        titles_output = "<b>Titles and Science/Tech Relevance:</b><br><br>"
+        for index, row in self.data.iterrows():
+            if row['is_science_tech']:
+                # Highlight the title if it's related to science and technology
+                title = f"<span style='color:blue;'><b>{row['title']}</b></span>"
+                relevance = "Related"
             else:
-                texts = self.data['processed_abstract'].tolist()  # Only use abstracts
+                title = row['title']
+                relevance = "Other"
 
-            # Tokenize texts
-            texts = [text.split() for text in texts]
+            category = row['category'] if row['category'] else "Uncategorized"
+            titles_output += f"<b>Title:</b> {title}<br>"
+            titles_output += f" - {relevance} ({category})<br>"
+            titles_output += f"<b>Abstract:</b> {row['abstract']}<br><br>"
 
-            # Create a dictionary and corpus for LDA
-            dictionary = corpora.Dictionary(texts)
-            corpus = [dictionary.doc2bow(text) for text in texts]
-
-            # Apply LDA
-            num_topics = 5
-            lda_model = LdaModel(corpus, num_topics=num_topics, id2word=dictionary, passes=10)
-
-            # Display topics
-            topics = lda_model.print_topics(num_words=3)
-            topics_output = ""
-            for topic in topics:
-                topics_output += f"Topic {topic[0]}: {topic[1]}\n"
-            self.text_area.setPlainText(topics_output)
-
-            # Check for science and technology relevance
-            science_keywords = ['science', 'technology', 'engineering', 'research', 'development', 'innovation']
-            specific_keyword = 'science and technology'
-
-            self.data['is_science_tech'] = self.data['processed_abstract'].apply(
-                lambda x: any(keyword in x for keyword in science_keywords)
-            )
-
-            # Categorize articles by topics
-            self.data['category'] = self.data['abstract'].apply(self.categorize_article)
-
-            # Prepare output for titles, science/tech relevance, and category
-            titles_output = "<b>Titles and Science/Tech Relevance:</b><br><br>"
-            for index, row in self.data.iterrows():
-                relevance = "Related to Science and Technology" if row['is_science_tech'] else "Not Related"
-                category = row['category'] if row['category'] else "Uncategorized"
-                titles_output += f"<b>Title:</b> {row['title']}<br>"
-                titles_output += f" - {relevance} ({category})<br>"
-                titles_output += f"<b>Abstract:</b> {row['abstract']}<br><br>"
-
-            # Set output with HTML formatting
-            self.text_area.setHtml(titles_output)
-            self.result_label.setText(f"Total Papers Analyzed: {len(self.data)}")
+        # Set output with HTML formatting
+        self.text_area.setHtml(titles_output)
+        self.result_label.setText(f"Total Papers Analyzed: {len(self.data)}")
 
     def categorize_article(self, abstract):
         """Categorize article topics based on keywords."""
@@ -209,21 +229,33 @@ class TopicModelingApp(QMainWindow):
             'symptom', 'diagnosis', 'patient', 'healthcare', 'chronic', 'mental health', 
             'preventive', 'vaccine', 'epidemiology', 'health policy', 'cardiology', 'neurology', 
             'endocrinology', 'pathology', 'immunology', 'surgery', 'rehabilitation', 'nursing', 
-            'health technology', 'telemedicine'
+            'health technology', 'telemedicine', 'genetics', 'microbiology', 'biostatistics', 
+            'pharmacology', 'radiology', 'oncology', 'pediatrics', 'geriatrics', 'orthopedics', 
+            'anesthesiology', 'dermatology', 'psychiatry', 'emergency medicine', 'occupational health', 
+            'infectious diseases', 'public health policy', 'telehealth', 'bioethics', 'clinical trials', 
+            'gene therapy', 'biotechnology', 'personalized medicine', 'stem cell therapy', 'neurosurgery', 
+            'ophthalmology', 'prosthetics', 'primary care', 'prenatal care', 'imaging technology', 'healthcare economics', 
+            'alternative medicine'
         ],
         'Economics and Finance': [
-            'economy', 'finance', 'business', 'market', 'trade', 'investment', 'stock', 'currency',
-            'economic policy', 'inflation', 'banking', 'financial analysis', 'capital', 'assets', 
-            'debt', 'wealth management', 'risk management', 'economic growth', 'employment', 
-            'monetary policy', 'fiscal policy', 'microeconomics', 'macroeconomics', 'trade balance',
-            'supply chain', 'consumer behavior', 'market research'
+            'cryptocurrency', 'venture capital', 'financial markets', 'derivatives', 'commodities', 'interest rates', 
+            'globalization', 'foreign exchange', 'taxation', 'macroeconomic indicators', 'hedge funds', 'fiscal stimulus', 
+            'sovereign wealth funds', 'pension funds', 'crowdfunding', 'fintech', 'decentralized finance (DeFi)', 'insurance',
+            'investment banking', 'private equity', 'monetary theory',  'behavioral economics', 'quantitative finance', 
+            'credit rating', 'real estate markets', 'financial regulation', 'public finance', 'economic inequality', 'global markets'
         ],
         'Education and Social Science': [
             'education', 'teaching', 'learning', 'psychology', 'sociology', 'community', 'curriculum',
             'pedagogy', 'student', 'educational technology', 'literacy', 'research methods', 
             'social behavior', 'cultural studies', 'developmental psychology', 'human behavior', 
             'public policy', 'social justice', 'inequality', 'community engagement', 'mental health', 
-            'cognitive development', 'educational psychology', 'global education'
+            'cognitive development', 'educational psychology', 'global education', 'inclusive education',
+            'educational psychology', 'e-learning', 'distance education', 'child development', 'adult education',
+            'special education', 'early childhood education', 'cognitive science', 'social inequality', 'demographics',
+            'urban sociology', 'gender studies', 'ethnic studies', 'labor studies', 'human rights', 'political science',
+            'behavioral economics', 'social change', 'media studies', 'criminology', 'family studies','civic education', 
+            'educational reform', 'global citizenship', 'sociolinguistics', 'educational policy', 'social media', 
+            'community development', 'ethics in education'
         ],
             
     
@@ -233,15 +265,31 @@ class TopicModelingApp(QMainWindow):
             'applied mathematics', 'differential equations', 'topology', 'mathematical modeling', 
             'complexity', 'theoretical physics', 'mechanics', 'astrophysics', 'thermodynamics', 
             'chaos theory', 'mathematical physics', 'combinatorics', 'graph theory', 
-            'functional analysis'
+            'functional analysis', 'vector calculus', 'chaos theory', 'string theory', 'nuclear physics', 
+            'particle physics', 'optics', 'fluid mechanics', 'quantum field theory', 'condensed matter physics',
+            'electrodynamics', 'statistical mechanics', 'thermodynamic laws', 'quantum computing', 'tensor calculus', 
+            'game theory', 'dynamical systems', 'fractal geometry', 'wave equations', 'cryptography', 'topological spaces', 
+            'abstract algebra', 'group theory', 'discrete mathematics', 'fourier analysis', 'algebraic topology', 'set theory',
+            'functional equations', 'nonlinear dynamics', 'differential geometry', 'stochastic processes'
             ]
         }
 
         # Science and Technology keywords are explicitly handled here
-        science_keywords = ['science', 'technology', 'engineering', 'research', 'development', 'innovation','algorithm', 'data', 'network', 
-                            'computing', 'software', 'hardware', 'machine learning', 'AI','artificial intelligence', 'robotics', 'optimization', 
-                            'programming', 'information', 'database','web', 'internet', 'mobile', 'cybersecurity', 'signal processing', 'pattern recognition', 
-                            'image processing','virtual reality', 'augmented reality', 'environment', 'climate', 'ecology', 'sustainability', 'pollution', 'biodiversity']
+        science_keywords = ['science', 'technology', 'engineering', 'research', 'development', 'innovation', 'algorithm', 'data', 'network',
+'computing', 'software', 'hardware', 'machine learning', 'AI', 'artificial intelligence', 'robotics', 'optimization',
+'programming', 'information', 'database', 'web', 'internet', 'mobile', 'cybersecurity', 'signal processing', 'pattern recognition',
+'image processing', 'virtual reality', 'augmented reality', 'environment', 'climate', 'ecology', 'sustainability', 'pollution', 'biodiversity',
+'quantum computing', '5G', 'nanotechnology', 'biotechnology', 'autonomous systems', 'renewable energy', 'cloud computing', 'big data',
+'internet of things', 'bioinformatics', 'genomics', 'neural networks', 'deep learning', 'natural language processing', 'blockchain', 
+'cryptography', 'space exploration', 'satellite technology', 'aerospace engineering', 'semiconductors', 'quantum mechanics', 'astrophysics',
+'telecommunications', 'smart cities', 'green technology', 'human-computer interaction', 'biomechanics', 'thermodynamics', 'fluid dynamics',
+'materials science', '3D printing', 'genetic engineering', 'agricultural technology', 'energy storage', 'smart grid', 'bioengineering',
+'mechatronics', 'computer vision', 'robotic process automation', 'drones', 'wearable technology', 'optics', 'photonics', 'sensor technology',
+'artificial neural networks', 'computational biology', 'environmental monitoring', 'nanomaterials', 'biophysics', 'virtual assistants',
+'automated systems', 'data visualization', 'smart manufacturing', 'quantum information', 'edge computing', 'cyber-physical systems', 
+'smart transportation', 'augmented analytics', 'biofuels', 'carbon capture', 'human augmentation', 'precision medicine', 'telemedicine',
+'electromagnetic fields', 'superconductors', 'renewable resources', 'fusion energy', 'wearable sensors', 'remote sensing', 'geospatial technology'
+]
 
         abstract_lower = abstract.lower() if isinstance(abstract, str) else ""
 
